@@ -13,4 +13,5 @@ def get_model(here: pathlib.Path):
     if data:
         hb_model = Model.from_dict(data)
         st.session_state.hb_model = hb_model
+        st.session_state.vtk_path = None
         st.session_state.sql_path = None

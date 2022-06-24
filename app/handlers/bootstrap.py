@@ -10,6 +10,8 @@ def initialize():
     # sim session
     if 'hb_model' not in st.session_state:
         st.session_state.hb_model = None
+    if 'vtk_path' not in st.session_state:
+        st.session_state.vtk_path = None
     if 'epw_path' not in st.session_state:
         st.session_state.epw_path = None
     if 'ddy_path' not in st.session_state:
@@ -23,7 +25,5 @@ def initialize():
         st.session_state.cool_cop = None
     if 'ip_units' not in st.session_state:
         st.session_state.ip_units = False
-    if 'rebuild_viz' not in st.session_state:
-        st.session_state.rebuild_viz = True
     if 'sql_path' not in st.session_state:
         st.session_state.sql_path = None

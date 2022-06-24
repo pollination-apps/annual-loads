@@ -4,21 +4,25 @@ import os
 from pathlib import Path
 from honeybee.model import Model
 from honeybee_vtk.model import Model as VTKModel
-from streamlit_vtkjs import st_vtkjs
+from pollination_streamlit_viewer import viewer
 from ladybug.epw import EPW
 
 
 def generate_vtk_model(here: Path, hb_model: Model) -> str:
-    directory = os.path.join(here.as_posix(), 'data', st.session_state.user_id)
-    hbjson_path = hb_model.to_hbjson(hb_model.identifier, directory)
-    vtk_model = VTKModel.from_hbjson(hbjson_path)
-    vtk_path = vtk_model.to_vtkjs(folder=directory, name=hb_model.identifier)
-    st_vtkjs(content=Path(vtk_path).read_bytes(), key='vtk_preview_model')
+    if not st.session_state.vtk_path:
+        directory = os.path.join(here.as_posix(), 'data', st.session_state.user_id)
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        hbjson_path = hb_model.to_hbjson(hb_model.identifier, directory)
+        vtk_model = VTKModel.from_hbjson(hbjson_path)
+        vtk_path = vtk_model.to_vtkjs(folder=directory, name=hb_model.identifier)
+        st.session_state.vtk_path = vtk_path
+    vtk_path = st.session_state.vtk_path
+    viewer(content=Path(vtk_path).read_bytes(), key='vtk_preview_model')
 
 
 def new_weather_file():
     st.session_state.sql_path = None
-    st.session_state.rebuild_viz = True
 
 
 def get_weather_file(here: Path):
