@@ -18,10 +18,10 @@ jobs:
           OPENSTUDIO_TAR_FILENAME: 'openstudio.tar.gz'
           OPENSTUDIO_FILENAME: 'openstudio'
         run: |
-          curl -SL -o ${{OPENSTUDIO_TAR_FILENAME}} ${{OPENSTUDIO_DOWNLOAD_URL}}
-          tar zxvf ${{OPENSTUDIO_TAR_FILENAME}}
-          mv OpenStudio-*-Ubuntu-*/ ${{OPENSTUDIO_FILENAME}}
-          docker build . --file app/Dockerfile --tag ${{github.event.repository.name}}:latest --build-arg OPENSTUDIO_VERSION=${{OPENSTUDIO_VERSION}} --build-arg OPENSTUDIO_FILENAME=${{OPENSTUDIO_FILENAME}}
+          curl -SL -o $OPENSTUDIO_TAR_FILENAME $OPENSTUDIO_DOWNLOAD_URL
+          tar zxvf $OPENSTUDIO_TAR_FILENAME
+          mv OpenStudio-*-Ubuntu-*/ $OPENSTUDIO_FILENAME
+          docker build . --file app/Dockerfile --tag ${{github.event.repository.name}}:latest --build-arg OPENSTUDIO_VERSION=$OPENSTUDIO_VERSION --build-arg OPENSTUDIO_FILENAME=$OPENSTUDIO_FILENAME
 
   release-on-github:
     name: Deploy to GitHub
