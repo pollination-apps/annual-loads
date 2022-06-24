@@ -66,8 +66,8 @@ def get_inputs(host: str, target_folder: str):
         sketchup.get_model(target_folder)
 
     # add an option to preview the model in 3D
-    # if st.session_state.hb_model and st.checkbox(label='Preview Model', value=False):
-    #     shared.generate_vtk_model(target_folder, st.session_state.hb_model)
+    if st.session_state.hb_model and st.checkbox(label='Preview Model', value=False):
+        shared.generate_vtk_model(target_folder, st.session_state.hb_model)
 
     # get the input EPW and DDY files
     shared.get_weather_file(target_folder)
@@ -77,7 +77,6 @@ def get_inputs(host: str, target_folder: str):
     if in_north != st.session_state.north:
         st.session_state.north = in_north
         st.session_state.sql_path = None
-        st.session_state.rebuild_viz = True
 
     # get the inputs that only affect the display and do not require re-simulation
     col1, col2, col3 = st.columns(3)
@@ -85,17 +84,14 @@ def get_inputs(host: str, target_folder: str):
         label='Heating COP', min_value=0.0, max_value=6.0, value=1.0, step=0.05)
     if in_heat_cop != st.session_state.heat_cop:
         st.session_state.heat_cop = in_heat_cop
-        st.session_state.rebuild_viz = True
     in_cool_cop = col2.number_input(
         label='Cooling COP', min_value=0.0, max_value=6.0, value=1.0, step=0.05)
     if in_cool_cop != st.session_state.cool_cop:
         st.session_state.cool_cop = in_cool_cop
-        st.session_state.rebuild_viz = True
     in_ip_units = col3.checkbox(
         label='IP Units', value=False, help='Display output units in kBtu/ft2')
     if in_ip_units != st.session_state.ip_units:
         st.session_state.ip_units = in_ip_units
-        st.session_state.rebuild_viz = True
 
 
 def run_simulation(target_folder: str):
@@ -176,15 +172,10 @@ def data_to_load_intensity(data_colls, floor_area, data_type, cop=1, mults=None)
     return MonthlyCollection(total_head, total_vals, range(12))
 
 
-def create_charts():
+def create_charts(model, sql_path, heat_cop, cool_cop, ip_units):
     """Create the load charts from the results of the simulation."""
     # get the session variables for the results
-    model = st.session_state.hb_model
-    heat_cop = st.session_state.heat_cop
-    cool_cop = st.session_state.cool_cop
-    sql_path = st.session_state.sql_path
-    ip_units = st.session_state.ip_units
-    if not sql_path or not st.session_state.rebuild_viz:
+    if not sql_path:
         return
 
     # load up the floor area, get the model units, and the room multipliers
@@ -269,9 +260,6 @@ def create_charts():
     figure = month_chart.plot(title='Load Balance')
     st.plotly_chart(figure)
 
-    # set the session stat variable
-    st.session_state.rebuild_viz = False
-
 
 def main(platform):
     # title
@@ -286,7 +274,11 @@ def main(platform):
     run_simulation(target_folder)
 
     # create the resulting charts
-    create_charts()
+    create_charts(
+        st.session_state.hb_model, st.session_state.sql_path,
+        st.session_state.heat_cop, st.session_state.cool_cop,
+        st.session_state.ip_units
+    )
 
 
 if __name__ == '__main__':
