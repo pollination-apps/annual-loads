@@ -4,9 +4,30 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test-docker:
-    name: Test docker build
+
+  generate-app-name:
+    name: Generate App name
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        
+      - name: Generate App name
+        id: generate_app_name
+        run: |
+          repo_name=${{ github.event.repository.name }}
+          echo $repo_name
+          lowercase_repo_name=${repo_name,,}
+          echo $lowercase_repo_name
+          echo "::set-output name=app-name::$lowercase_repo_name"
+
+    outputs:
+      app-name: ${{ steps.generate_app_name.outputs.app-name }}
+
+  test-docker:
+    name: Test Docker build
+    runs-on: ubuntu-latest
+    needs: generate-app-name
     if: github.ref != 'refs/heads/production'
     steps:
       - uses: actions/checkout@v2
@@ -21,7 +42,7 @@ jobs:
           curl -SL -o $OPENSTUDIO_TAR_FILENAME $OPENSTUDIO_DOWNLOAD_URL
           tar zxvf $OPENSTUDIO_TAR_FILENAME
           mv OpenStudio-*-Ubuntu-*/ $OPENSTUDIO_FILENAME
-          docker build . --file app/Dockerfile --tag ${{github.event.repository.name}}:latest --build-arg OPENSTUDIO_VERSION=$OPENSTUDIO_VERSION --build-arg OPENSTUDIO_FILENAME=$OPENSTUDIO_FILENAME
+          docker build . --file Dockerfile --tag ${{needs.generate-app-name.outputs.app-name}}:latest --build-arg OPENSTUDIO_VERSION=$OPENSTUDIO_VERSION --build-arg OPENSTUDIO_FILENAME=$OPENSTUDIO_FILENAME
 
   release-on-github:
     name: Deploy to GitHub
@@ -55,7 +76,7 @@ jobs:
   deploy-to-staging:
     name: Deploy to Pollination Staging
     runs-on: ubuntu-latest
-    needs: release-on-github
+    needs: [generate-app-name, release-on-github]
     if: ${{github.ref == 'refs/heads/master' && github.event.repository.owner.name == 'pollination-apps' && contains(needs.release-on-github.outputs.tag, '.')}}
     steps:
       - uses: actions/checkout@v2
@@ -65,12 +86,19 @@ jobs:
         with:
           python-version: 3.7
 
-      - name: install dev requirements
-        run: pip install -r dev-requirements.txt
+      - name: Get Job Context
+        id: get-context
+        run: |
+          TAG=$(git describe --tags | sed 's/v//')
+          echo "Releasing tag: ${TAG:?}"
+          echo "::set-output name=tag::$TAG"
+
+      - name: install pollination-apps
+        run: pip install -U pollination-apps
 
       - name: deploy to staging
         run: pollination-apps deploy app --tag ${{needs.release-on-github.outputs.tag}} --owner ladybug-tools -n ${{github.event.repository.name}} -e staging -m "${{github.event.commits[0].message}}"
-        
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POLLINATION_TOKEN: ${{ secrets.POLLINATION_STAGING_TOKEN }}
