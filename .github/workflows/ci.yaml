@@ -86,15 +86,8 @@ jobs:
         with:
           python-version: 3.7
 
-      - name: Get Job Context
-        id: get-context
-        run: |
-          TAG=$(git describe --tags | sed 's/v//')
-          echo "Releasing tag: ${TAG:?}"
-          echo "::set-output name=tag::$TAG"
-
-      - name: install pollination-apps
-        run: pip install -U pollination-apps
+      - name: install dev requirements
+        run: pip install -r dev-requirements.txt
 
       - name: deploy to staging
         run: pollination-apps deploy app --tag ${{needs.release-on-github.outputs.tag}} --owner ladybug-tools -n ${{github.event.repository.name}} -e staging -m "${{github.event.commits[0].message}}"
