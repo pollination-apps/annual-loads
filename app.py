@@ -2,9 +2,6 @@
 import os
 import pathlib
 
-import streamlit as st
-from pollination_streamlit_io import special
-
 from ladybug.futil import write_to_file_by_name
 from ladybug.color import Colorset, Color
 from ladybug.legend import LegendParameters
@@ -21,6 +18,9 @@ from honeybee_energy.result.err import Err
 from honeybee_energy.run import run_idf
 from honeybee_energy.writer import energyplus_idf_version
 from honeybee_energy.config import folders as energy_folders
+
+import streamlit as st
+from pollination_streamlit_io import special
 
 from handlers import (bootstrap, web, rhino, revit, sketchup, shared)
 

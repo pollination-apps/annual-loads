@@ -33,16 +33,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Build docker image
-        env:
-          OPENSTUDIO_VERSION: '3.4.0'
-          OPENSTUDIO_DOWNLOAD_URL: 'https://github.com/NREL/OpenStudio/releases/download/v3.4.0/OpenStudio-3.4.0+4bd816f785-Ubuntu-20.04.tar.gz'
-          OPENSTUDIO_TAR_FILENAME: 'openstudio.tar.gz'
-          OPENSTUDIO_FILENAME: 'openstudio'
-        run: |
-          curl -SL -o $OPENSTUDIO_TAR_FILENAME $OPENSTUDIO_DOWNLOAD_URL
-          tar zxvf $OPENSTUDIO_TAR_FILENAME
-          mv OpenStudio-*-Ubuntu-*/ $OPENSTUDIO_FILENAME
-          docker build . --file Dockerfile --tag ${{needs.generate-app-name.outputs.app-name}}:latest --build-arg OPENSTUDIO_VERSION=$OPENSTUDIO_VERSION --build-arg OPENSTUDIO_FILENAME=$OPENSTUDIO_FILENAME
+        run: docker build . --file Dockerfile --tag ${{needs.generate-app-name.outputs.app-name}}:latest
 
   release-on-github:
     name: Deploy to GitHub
