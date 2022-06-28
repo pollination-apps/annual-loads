@@ -1,7 +1,6 @@
 """A module to collect web setup."""
 
 import json
-import pathlib
 import streamlit as st
 from honeybee.model import Model
 
@@ -11,7 +10,7 @@ def new_model():
     st.session_state.sql_path = None
 
 
-def get_model(here: pathlib.Path):
+def get_model():
     hbjson_file = st.file_uploader(
         'Upload a hbjson file', type=['hbjson', 'json'], on_change=new_model)
     if hbjson_file:

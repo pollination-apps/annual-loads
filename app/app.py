@@ -53,24 +53,24 @@ st.sidebar.image(
 )
 
 
-def get_inputs(host: str, target_folder: str):
+def get_inputs(host: str):
     """Get all of the inputs for the simulation."""
     # get the input model
     if host.lower() == 'web':
-        web.get_model(target_folder)
+        web.get_model()
     elif host.lower() == 'rhino':
-        rhino.get_model(target_folder)
+        rhino.get_model()
     elif host.lower() == 'revit':
-        revit.get_model(target_folder)
+        revit.get_model()
     elif host.lower() == 'sketchup':
-        sketchup.get_model(target_folder)
+        sketchup.get_model()
 
     # add an option to preview the model in 3D
     if st.session_state.hb_model and st.checkbox(label='Preview Model', value=False):
-        shared.generate_vtk_model(target_folder, st.session_state.hb_model)
+        shared.generate_vtk_model(st.session_state.hb_model)
 
     # get the input EPW and DDY files
-    shared.get_weather_file(target_folder)
+    shared.get_weather_file()
 
     # set up inputs for north
     in_north = st.slider(label='North', min_value=0, max_value=360, value=0)
@@ -94,9 +94,10 @@ def get_inputs(host: str, target_folder: str):
         st.session_state.ip_units = in_ip_units
 
 
-def run_simulation(target_folder: str):
+def run_simulation():
     """Build the IDF file from the Model and run it through EnergyPlus."""
     # gather all of the inputs and ensure there is a model
+    target_folder = st.session_state.target_folder
     hb_model = st.session_state.hb_model
     epw_path = st.session_state.epw_path
     ddy_path = st.session_state.ddy_path
@@ -266,13 +267,11 @@ def main(platform):
     st.header('Annual Loads')
 
     # load up all of the inputs
-    target_folder = pathlib.Path(__file__).parent
-
     bootstrap.initialize()
-    get_inputs(platform, target_folder)
+    get_inputs(platform)
 
     # preview the model and/or run the simulation
-    run_simulation(target_folder)
+    run_simulation()
 
     # create the resulting charts
     create_charts(

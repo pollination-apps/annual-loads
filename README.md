@@ -13,7 +13,7 @@ Install dependencies:
 Start Streamlit
 
 ```
-> streamlit run app.py
+> streamlit run app/app.py
 
   You can now view your Streamlit app in your browser.
 
