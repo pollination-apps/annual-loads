@@ -5,7 +5,7 @@ from honeybee.model import Model
 from pollination_streamlit_io import special, button
 
 
-def get_model(here: pathlib.Path):
+def get_model():
     # save HBJSON in data folder
     token = special.sync(key='pollination-sync', delay=50)
     data = button.get(

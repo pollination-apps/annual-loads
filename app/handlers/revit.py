@@ -7,7 +7,7 @@ from pollination_streamlit_io import special
 
 
 # ADN: @Konrad can you check this? :)
-def get_model(here: pathlib.Path):
+def get_model():
     data = special.get_hbjson(key='my-revit-json')
     if data:
         model_data = json.loads(data)

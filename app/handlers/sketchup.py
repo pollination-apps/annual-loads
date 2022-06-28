@@ -5,7 +5,7 @@ from honeybee.model import Model
 from pollination_streamlit_io import button
 
 
-def get_model(here: pathlib.Path):
+def get_model():
     # save HBJSON in data folder
     st.warning('Sketchup does not support sync for now...')
     data = button.get(

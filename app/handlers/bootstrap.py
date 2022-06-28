@@ -1,5 +1,6 @@
 """Init all session state variables"""
 import uuid
+import pathlib
 import streamlit as st
 
 
@@ -7,6 +8,8 @@ def initialize():
     # user session
     if 'user_id' not in st.session_state:
         st.session_state.user_id = str(uuid.uuid4())[:8]
+    if 'target_folder' not in st.session_state:
+        st.session_state.target_folder = pathlib.Path(__file__).parent.parent
     # sim session
     if 'hb_model' not in st.session_state:
         st.session_state.hb_model = None
