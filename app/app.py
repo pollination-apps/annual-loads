@@ -267,6 +267,7 @@ def main(platform):
 
     # load up all of the inputs
     target_folder = pathlib.Path(__file__).parent
+
     bootstrap.initialize()
     get_inputs(platform, target_folder)
 

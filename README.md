@@ -31,7 +31,7 @@ You can run the app locally inside Docker to ensure the app will work fine after
 You need to install Docker on your machine in order to be able to run this command
 
 ```
-> pollination-apps run . ladybug-tools --name "annual-loads"
+> pollination-apps run app ladybug-tools --name "annual-loads"
 ```
 
 ## Deploy to Pollination
