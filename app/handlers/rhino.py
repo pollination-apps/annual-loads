@@ -1,5 +1,4 @@
 """A module to collect rhino setup."""
-import pathlib
 import streamlit as st
 from honeybee.model import Model
 from pollination_streamlit_io import special, button

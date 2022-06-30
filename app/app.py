@@ -129,7 +129,7 @@ def run_idf(idf_file_path, epw_file_path=None, expand_objects=True):
         for line in iter(lambda: process.stdout.readline(), b""):
             std_line = line.decode("utf-8")
             current_stdout.append(std_line)
-            stdout_lines = ['<p class="std">{}</p>'.format(l) for l in current_stdout]
+            stdout_lines = ['<p class="std">{}</p>'.format(li) for li in current_stdout]
             st.markdown(''.join(stdout_lines), unsafe_allow_html=True)
             if len(current_stdout) == 6:
                 current_stdout.pop(0)

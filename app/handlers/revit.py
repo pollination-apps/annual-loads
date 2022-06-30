@@ -1,6 +1,5 @@
 """A module to collect revit setup."""
 import json
-import pathlib
 import streamlit as st
 from honeybee.model import Model
 from pollination_streamlit_io import special
