@@ -1,6 +1,6 @@
 """The Pollination Annual Loads App."""
 import os
-import pathlib
+import subprocess
 
 from ladybug.futil import write_to_file_by_name
 from ladybug.color import Colorset, Color
@@ -15,7 +15,7 @@ from honeybee.units import conversion_factor_to_meters
 from honeybee_energy.result.loadbalance import LoadBalance
 from honeybee_energy.simulation.parameter import SimulationParameter
 from honeybee_energy.result.err import Err
-from honeybee_energy.run import run_idf
+from honeybee_energy.run import prepare_idf_for_simulation, output_energyplus_files
 from honeybee_energy.writer import energyplus_idf_version
 from honeybee_energy.config import folders as energy_folders
 
@@ -94,6 +94,51 @@ def get_inputs(host: str):
         st.session_state.ip_units = in_ip_units
 
 
+def run_idf(idf_file_path, epw_file_path=None, expand_objects=True):
+    """Run an IDF file through energyplus on any operating system.
+
+    Args:
+        idf_file_path: The full path to an IDF file.
+        epw_file_path: The full path to an EPW file. Note that inputting None here
+            is only appropriate when the simulation is just for design days and has
+            no weather file run period. (Default: None).
+        expand_objects: If True, the IDF run will include the expansion of any
+            HVAC Template objects in the file before beginning the simulation.
+            This is a necessary step whenever there are HVAC Template objects in
+            the IDF but it is unnecessary extra time when they are not
+            present. (Default: True).
+    """
+    # check and prepare the input files
+    directory = prepare_idf_for_simulation(idf_file_path, epw_file_path)
+
+    # run the simulation
+    cmds = [energy_folders.energyplus_exe, '-i', energy_folders.energyplus_idd_path]
+    if epw_file_path is not None:
+        cmds.append('-w')
+        cmds.append(os.path.abspath(epw_file_path))
+    if expand_objects:
+        cmds.append('-x')
+    process = subprocess.Popen(cmds, cwd=directory, stdout=subprocess.PIPE)
+
+    # print the stdout in the app
+    stdout_style = '<style> .std {font-size: 1rem ; margin: 0rem ; ' \
+        'padding: 0rem ; color: white ; background-color: black ;} </style>'
+    st.markdown(stdout_style, unsafe_allow_html=True)
+    with st.empty():
+        current_stdout = []
+        for line in iter(lambda: process.stdout.readline(), b""):
+            std_line = line.decode("utf-8")
+            current_stdout.append(std_line)
+            stdout_lines = ['<p class="std">{}</p>'.format(l) for l in current_stdout]
+            st.markdown(''.join(stdout_lines), unsafe_allow_html=True)
+            if len(current_stdout) == 6:
+                current_stdout.pop(0)
+        st.write('')  # clear the EnergyPlus stdout
+
+    # output the simulation files
+    return output_energyplus_files(directory)
+
+
 def run_simulation():
     """Build the IDF file from the Model and run it through EnergyPlus."""
     # gather all of the inputs and ensure there is a model
@@ -141,7 +186,7 @@ def run_simulation():
         write_to_file_by_name(directory, 'in.idf', idf_str, True)
 
         # run the IDF through EnergyPlus
-        sql, zsz, rdd, html, err = run_idf(idf, epw_path.as_posix(), silent=True)
+        sql, zsz, rdd, html, err = run_idf(idf, epw_path.as_posix())
         if html is None and err is not None:  # something went wrong; parse the errors
             err_obj = Err(err)
             print(err_obj.file_contents)
@@ -173,7 +218,7 @@ def data_to_load_intensity(data_colls, floor_area, data_type, cop=1, mults=None)
     return MonthlyCollection(total_head, total_vals, range(12))
 
 
-def create_charts(model, sql_path, heat_cop, cool_cop, ip_units):
+def create_charts(container, model, sql_path, heat_cop, cool_cop, ip_units):
     """Create the load charts from the results of the simulation."""
     # get the session variables for the results
     if not sql_path:
@@ -238,7 +283,7 @@ def create_charts(model, sql_path, heat_cop, cool_cop, ip_units):
 
     # report the total load intensity
     total_load = [dat.total for dat in load_terms]
-    st.subheader(
+    container.subheader(
         'Total Load Intensity: {} {}'.format(round(sum(total_load), 2), display_units))
 
     # plot the monthly data collections on a bar chart
@@ -246,7 +291,7 @@ def create_charts(model, sql_path, heat_cop, cool_cop, ip_units):
     leg_par.decimal_count = 0
     month_chart = MonthlyChart(load_terms, leg_par, stack=True)
     figure = month_chart.plot(title='Load Intensity')
-    st.plotly_chart(figure)
+    container.plotly_chart(figure)
 
     # create a monthly chart with the load balance
     bal_obj = LoadBalance.from_sql_file(model, sql_path)
@@ -259,7 +304,7 @@ def create_charts(model, sql_path, heat_cop, cool_cop, ip_units):
     leg_par.decimal_count = 0
     month_chart = MonthlyChart(balance, leg_par, stack=True)
     figure = month_chart.plot(title='Load Balance')
-    st.plotly_chart(figure)
+    container.plotly_chart(figure)
 
 
 def main(platform):
@@ -269,13 +314,14 @@ def main(platform):
     # load up all of the inputs
     bootstrap.initialize()
     get_inputs(platform)
+    container = st.container()
 
     # preview the model and/or run the simulation
     run_simulation()
 
     # create the resulting charts
     create_charts(
-        st.session_state.hb_model, st.session_state.sql_path,
+        container, st.session_state.hb_model, st.session_state.sql_path,
         st.session_state.heat_cop, st.session_state.cool_cop,
         st.session_state.ip_units
     )
