@@ -8,7 +8,7 @@ from honeybee.model import Model
 def new_model():
     # reset the simulation results and get the file data
     st.session_state.vtk_path = None
-    st.session_state.sql_path = None
+    st.session_state.sql_results = None
     # load the model object from the file data
     hbjson_file = st.session_state.hbjson_data
     if hbjson_file:

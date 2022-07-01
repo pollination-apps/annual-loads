@@ -26,7 +26,7 @@ def generate_vtk_model(hb_model: Model) -> str:
 
 def new_weather_file():
     # reset the simulation results and get the file data
-    st.session_state.sql_path = None
+    st.session_state.sql_results = None
     epw_file = st.session_state.epw_data
     if epw_file:
         # save EPW in data folder

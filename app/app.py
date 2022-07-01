@@ -76,7 +76,7 @@ def get_inputs(host: str):
     in_north = st.slider(label='North', min_value=0, max_value=360, value=0)
     if in_north != st.session_state.north:
         st.session_state.north = in_north
-        st.session_state.sql_path = None
+        st.session_state.sql_results = None
 
     # get the inputs that only affect the display and do not require re-simulation
     col1, col2, col3 = st.columns(3)
@@ -139,6 +139,98 @@ def run_idf(idf_file_path, epw_file_path=None, expand_objects=True):
     return output_energyplus_files(directory)
 
 
+def data_to_load_intensity(data_colls, floor_area, data_type, mults=None):
+    """Convert data collections from EnergyPlus to a single load intensity collection.
+
+    Args:
+        data_colls: A list of monthly data collections for an energy term.
+        floor_area: The total floor area of the rooms, used to compute EUI.
+        data_type: Text for the data type of the collections (eg. "Cooling").
+        mults: An optional dictionary of Room identifiers and integers for
+            the multipliers of the honeybee Rooms.
+    """
+    if len(data_colls) != 0:
+        if mults is not None:
+            if 'Zone' in data_colls[0].header.metadata:
+                rel_mults = [mults[data.header.metadata['Zone']] for data in data_colls]
+                data_colls = [dat * mul for dat, mul in zip(data_colls, rel_mults)]
+        total_vals = [sum(month_vals) / floor_area for month_vals in zip(*data_colls)]
+    else:  # just make a "filler" collection of 0 values
+        total_vals = [0] * 12
+    meta_dat = {'type': data_type}
+    total_head = Header(EnergyIntensity(), 'kWh/m2', AnalysisPeriod(), meta_dat)
+    return MonthlyCollection(total_head, total_vals, range(12))
+
+
+def load_sql_data(sql_path, model):
+    """Load and process the SQL data from the simulation and store it in memory.
+
+    Args:
+        sql_path: Path to the SQLite file output from an EnergyPlus simulation.
+        model: The honeybee model object used to create the SQL results.
+    """
+    # load up the floor area, get the model units, and the room multipliers
+    floor_area = model.floor_area
+    assert floor_area != 0, 'Model has no floors with which to compute EUI.'
+    floor_area = floor_area * conversion_factor_to_meters(model.units) ** 2
+    mults = {rm.identifier.upper(): rm.multiplier for rm in model.rooms}
+    mults = None if all(mul == 1 for mul in mults.values()) else mults
+
+    # get data collections for each energy use term
+    sql_obj = SQLiteResult(sql_path)
+    cool_init = sql_obj.data_collections_by_output_name(cool_out)
+    heat_init = sql_obj.data_collections_by_output_name(heat_out)
+    light_init = sql_obj.data_collections_by_output_name(light_out)
+    elec_eq_init = sql_obj.data_collections_by_output_name(el_equip_out)
+    gas_equip_init = sql_obj.data_collections_by_output_name(gas_equip_out)
+    process1_init = sql_obj.data_collections_by_output_name(process1_out)
+    process2_init = sql_obj.data_collections_by_output_name(process2_out)
+    shw_init = sql_obj.data_collections_by_output_name(shw_out)
+
+    # convert the results to EUI and output them
+    cooling = data_to_load_intensity(cool_init, floor_area, 'Cooling')
+    heating = data_to_load_intensity(heat_init, floor_area, 'Heating')
+    lighting = data_to_load_intensity(light_init, floor_area, 'Lighting', mults)
+    equip = data_to_load_intensity(elec_eq_init, floor_area, 'Electric Equipment', mults)
+    load_terms = [cooling, heating, lighting, equip]
+    load_colors = [
+        Color(4, 25, 145), Color(153, 16, 0), Color(255, 255, 0), Color(255, 121, 0)
+    ]
+
+    # add gas equipment if it is there
+    if len(gas_equip_init) != 0:
+        gas_equip = data_to_load_intensity(
+            gas_equip_init, floor_area, 'Gas Equipment', mults)
+        load_terms.append(gas_equip)
+        load_colors.append(Color(255, 219, 128))
+    # add process load if it is there
+    process = []
+    if len(process1_init) != 0:
+        process1 = data_to_load_intensity(process1_init, floor_area, 'Process', mults)
+        process2 = data_to_load_intensity(process2_init, floor_area, 'Process', mults)
+        process = process1 + process2
+        load_terms.append(process)
+        load_colors.append(Color(135, 135, 135))
+    # add hot water if it is there
+    hot_water = []
+    if len(shw_init) != 0:
+        hot_water = data_to_load_intensity(
+            shw_init, floor_area, 'Service Hot Water', mults)
+        load_terms.append(hot_water)
+        load_colors.append(Color(255, 0, 0))
+
+    # create a monthly load balance
+    bal_obj = LoadBalance.from_sql_file(model, sql_path)
+    balance = bal_obj.load_balance_terms(True, True)
+
+    # add all of the data to the session state
+    st.session_state.sql_results = {
+        'load_terms': load_terms,
+        'load_colors': load_colors,
+        'balance': balance
+    }
+
+
 def run_simulation():
     """Build the IDF file from the Model and run it through EnergyPlus."""
     # gather all of the inputs and ensure there is a model
@@ -193,93 +285,37 @@ def run_simulation():
             for error in err_obj.fatal_errors:
                 raise Exception(error)
         if sql is not None and os.path.isfile(sql):
-            st.session_state.sql_path = sql
+            load_sql_data(sql, hb_model)
 
 
-def data_to_load_intensity(data_colls, floor_area, data_type, cop=1, mults=None):
-    """Convert data collections from EnergyPlus to a single load intensity collection.
+def create_charts(container, sql_results, heat_cop, cool_cop, ip_units):
+    """Create the load charts from the loaded sql results of the simulation.
 
     Args:
-        data_colls: A list of monthly data collections for an energy term.
-        floor_area: The total floor area of the rooms, used to compute EUI.
-        data_type: Text for the data type of the collections (eg. "Cooling").
-        cop: Optional number for the COP, which the results will be divided by.
+        container: The streamlit container to which the charts will be added.
+        sql_results: Dictionary of the EnergyPlus SQL results (or None).
+        heat_cop: Number for the heating COP.
+        cool_cop: Number for the cooling COP.
+        ip_units: Boolean to indicate whether IP units should be used.
     """
-    if len(data_colls) != 0:
-        if mults is not None:
-            data_colls = [dat * mul for dat, mul in zip(data_colls, mults)]
-        total_vals = [sum(month_vals) / floor_area for month_vals in zip(*data_colls)]
-        if cop != 1:
-            total_vals = [val / cop for val in total_vals]
-    else:  # just make a "filler" collection of 0 values
-        total_vals = [0] * 12
-    meta_dat = {'type': data_type}
-    total_head = Header(EnergyIntensity(), 'kWh/m2', AnalysisPeriod(), meta_dat)
-    return MonthlyCollection(total_head, total_vals, range(12))
-
-
-def create_charts(container, model, sql_path, heat_cop, cool_cop, ip_units):
-    """Create the load charts from the results of the simulation."""
     # get the session variables for the results
-    if not sql_path:
+    if not sql_results:
         return
-
-    # load up the floor area, get the model units, and the room multipliers
-    floor_area = model.floor_area
-    assert floor_area != 0, 'Model has no floors with which to compute EUI.'
-    floor_area = floor_area * conversion_factor_to_meters(model.units) ** 2
-    mults = [rm.multiplier for rm in model.rooms]
-    mults = None if all(mul == 1 for mul in mults) else mults
-
-    # get data collections for each energy use term
-    sql_obj = SQLiteResult(sql_path)
-    cool_init = sql_obj.data_collections_by_output_name(cool_out)
-    heat_init = sql_obj.data_collections_by_output_name(heat_out)
-    light_init = sql_obj.data_collections_by_output_name(light_out)
-    elec_equip_init = sql_obj.data_collections_by_output_name(el_equip_out)
-    gas_equip_init = sql_obj.data_collections_by_output_name(gas_equip_out)
-    process1_init = sql_obj.data_collections_by_output_name(process1_out)
-    process2_init = sql_obj.data_collections_by_output_name(process2_out)
-    shw_init = sql_obj.data_collections_by_output_name(shw_out)
-
-    # convert the results to EUI and output them
-    cooling = data_to_load_intensity(cool_init, floor_area, 'Cooling', cool_cop)
-    heating = data_to_load_intensity(heat_init, floor_area, 'Heating', heat_cop)
-    lighting = data_to_load_intensity(light_init, floor_area, 'Lighting', 1, mults)
-    equip = data_to_load_intensity(
-        elec_equip_init, floor_area, 'Electric Equipment', 1, mults)
-    load_terms = [cooling, heating, lighting, equip]
-    load_colors = [
-        Color(4, 25, 145), Color(153, 16, 0), Color(255, 255, 0), Color(255, 121, 0)
-    ]
-
-    # add gas equipment if it is there
-    if len(gas_equip_init) != 0:
-        gas_equip = data_to_load_intensity(
-            gas_equip_init, floor_area, 'Gas Equipment', 1, mults)
-        load_terms.append(gas_equip)
-        load_colors.append(Color(255, 219, 128))
-    # add process load if it is there
-    process = []
-    if len(process1_init) != 0:
-        process1 = data_to_load_intensity(process1_init, floor_area, 'Process', 1, mults)
-        process2 = data_to_load_intensity(process2_init, floor_area, 'Process', 1, mults)
-        process = process1 + process2
-        load_terms.append(process)
-        load_colors.append(Color(135, 135, 135))
-    # add hot water if it is there
-    hot_water = []
-    if len(shw_init) != 0:
-        hot_water = data_to_load_intensity(
-            shw_init, floor_area, 'Service Hot Water', 1, mults)
-        load_terms.append(hot_water)
-        load_colors.append(Color(255, 0, 0))
+    load_terms = sql_results['load_terms'].copy()
+    load_colors = sql_results['load_colors']
+    balance = sql_results['balance']
 
     # convert the data to the correct units
     display_units = 'kBtu/ft2' if ip_units else 'kWh/m2'
     if load_terms[0].header.unit != display_units:
         for data in load_terms:
             data.convert_to_unit(display_units)
+
+    # multiply the results by the COP if it is not equal to 1
+    if cool_cop != 1:
+        load_terms[0] = load_terms[0] / cool_cop
+    if heat_cop != 1:
+        load_terms[1] = load_terms[1] / heat_cop
 
     # report the total load intensity
     total_load = [dat.total for dat in load_terms]
@@ -294,8 +330,6 @@ def create_charts(container, model, sql_path, heat_cop, cool_cop, ip_units):
     container.plotly_chart(figure)
 
     # create a monthly chart with the load balance
-    bal_obj = LoadBalance.from_sql_file(model, sql_path)
-    balance = bal_obj.load_balance_terms(True, True)
     if balance[0].header.unit != display_units:
         for data in balance:
             data.convert_to_unit(display_units)
@@ -321,7 +355,7 @@ def main(platform):
 
     # create the resulting charts
     create_charts(
-        container, st.session_state.hb_model, st.session_state.sql_path,
+        container, st.session_state.sql_results,
         st.session_state.heat_cop, st.session_state.cool_cop,
         st.session_state.ip_units
     )

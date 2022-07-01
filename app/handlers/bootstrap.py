@@ -28,5 +28,5 @@ def initialize():
         st.session_state.cool_cop = None
     if 'ip_units' not in st.session_state:
         st.session_state.ip_units = False
-    if 'sql_path' not in st.session_state:
-        st.session_state.sql_path = None
+    if 'sql_results' not in st.session_state:
+        st.session_state.sql_results = None
