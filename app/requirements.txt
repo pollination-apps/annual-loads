@@ -4,4 +4,4 @@ pollination-streamlit>=0.2.1
 pollination-streamlit-io==0.26.1
 pollination-streamlit-viewer>=0.4.0
 ladybug-charts>=1.18.5
-honeybee-energy==1.91.34
+honeybee-energy==1.91.35

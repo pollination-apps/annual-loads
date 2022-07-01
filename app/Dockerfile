@@ -1,4 +1,4 @@
-FROM ladybugtools/honeybee-energy:1.91.34 as base
+FROM ladybugtools/honeybee-energy:1.91.35 as base
 
 WORKDIR /home/ladybugbot/app
 COPY . .
