@@ -93,7 +93,12 @@ def get_model_web():
 
 
 def get_model_cad():
-    hbjson = get_hbjson('hbjson_data')
+    # load the model object from the file data
+    hbjson_data = get_hbjson('hbjson_data')
+    if hbjson_data:
+        st.session_state.vtk_path = None
+        st.session_state.sql_results = None
+        st.session_state.hb_model = Model.from_dict(hbjson_data)
 
 
 def generate_vtk_model(hb_model: Model) -> str:
