@@ -20,9 +20,10 @@ from honeybee_energy.writer import energyplus_idf_version
 from honeybee_energy.config import folders as energy_folders
 
 import streamlit as st
-from pollination_streamlit_io import special
+from pollination_streamlit_io import get_host
 
-from handlers import (bootstrap, web, rhino, revit, sketchup, shared)
+from handlers import initialize, get_weather_file, get_model_web, get_model_cad, \
+    generate_vtk_model
 
 
 # Names of EnergyPlus outputs that will be requested and parsed to make graphics
@@ -56,21 +57,17 @@ st.sidebar.image(
 def get_inputs(host: str):
     """Get all of the inputs for the simulation."""
     # get the input model
-    if host.lower() == 'web':
-        web.get_model()
-    elif host.lower() == 'rhino':
-        rhino.get_model()
-    elif host.lower() == 'revit':
-        revit.get_model()
-    elif host.lower() == 'sketchup':
-        sketchup.get_model()
+    if host is None or host.lower() == 'web':
+        get_model_web()
+    else:
+        get_model_cad()
 
     # add an option to preview the model in 3D
     if st.session_state.hb_model and st.checkbox(label='Preview Model', value=False):
-        shared.generate_vtk_model(st.session_state.hb_model)
+        generate_vtk_model(st.session_state.hb_model)
 
     # get the input EPW and DDY files
-    shared.get_weather_file()
+    get_weather_file()
 
     # set up inputs for north
     in_north = st.slider(label='North', min_value=0, max_value=360, value=0)
@@ -95,7 +92,7 @@ def get_inputs(host: str):
 
 
 def run_idf(idf_file_path, epw_file_path=None, expand_objects=True):
-    """Run an IDF file through energyplus on any operating system.
+    """Run an IDF file through EnergyPlus on any operating system.
 
     Args:
         idf_file_path: The full path to an IDF file.
@@ -345,8 +342,8 @@ def main(platform):
     # title
     st.header('Annual Loads')
 
-    # load up all of the inputs
-    bootstrap.initialize()
+    # initialize the app and load up all of the inputs
+    initialize()
     get_inputs(platform)
     container = st.container()
 
@@ -364,5 +361,5 @@ def main(platform):
 if __name__ == '__main__':
     # get the platform from the query uri
     query = st.experimental_get_query_params()
-    platform = special.get_host() or 'web'
+    platform = get_host() or 'web'
     main(platform)
