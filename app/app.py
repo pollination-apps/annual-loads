@@ -21,9 +21,7 @@ from honeybee_energy.config import folders as energy_folders
 
 import streamlit as st
 from pollination_streamlit_io import get_host
-
-from handlers import initialize, get_weather_file, get_model_web, get_model_cad, \
-    generate_vtk_model
+from handlers import initialize, get_inputs
 
 
 # Names of EnergyPlus outputs that will be requested and parsed to make graphics
@@ -52,43 +50,6 @@ st.sidebar.image(
     '_pollination_brandmark-p-500.png',
     use_column_width=True
 )
-
-
-def get_inputs(host: str):
-    """Get all of the inputs for the simulation."""
-    # get the input model
-    if host is None or host.lower() == 'web':
-        get_model_web()
-    else:
-        get_model_cad()
-
-    # add an option to preview the model in 3D
-    if st.session_state.hb_model and st.checkbox(label='Preview Model', value=False):
-        generate_vtk_model(st.session_state.hb_model)
-
-    # get the input EPW and DDY files
-    get_weather_file()
-
-    # set up inputs for north
-    in_north = st.slider(label='North', min_value=0, max_value=360, value=0)
-    if in_north != st.session_state.north:
-        st.session_state.north = in_north
-        st.session_state.sql_results = None
-
-    # get the inputs that only affect the display and do not require re-simulation
-    col1, col2, col3 = st.columns(3)
-    in_heat_cop = col1.number_input(
-        label='Heating COP', min_value=0.0, max_value=6.0, value=1.0, step=0.05)
-    if in_heat_cop != st.session_state.heat_cop:
-        st.session_state.heat_cop = in_heat_cop
-    in_cool_cop = col2.number_input(
-        label='Cooling COP', min_value=0.0, max_value=6.0, value=1.0, step=0.05)
-    if in_cool_cop != st.session_state.cool_cop:
-        st.session_state.cool_cop = in_cool_cop
-    in_ip_units = col3.checkbox(
-        label='IP Units', value=False, help='Display output units in kBtu/ft2')
-    if in_ip_units != st.session_state.ip_units:
-        st.session_state.ip_units = in_ip_units
 
 
 def run_idf(idf_file_path, epw_file_path=None, expand_objects=True):
@@ -167,9 +128,11 @@ def load_sql_data(sql_path, model):
         model: The honeybee model object used to create the SQL results.
     """
     # load up the floor area, get the model units, and the room multipliers
-    floor_area = model.floor_area
+    con_fac = conversion_factor_to_meters(model.units) ** 2
+    floor_areas = [room.floor_area * room.multiplier * con_fac for room in model.rooms
+                   if not room.exclude_floor_area]
+    floor_area = sum(floor_areas)
     assert floor_area != 0, 'Model has no floors with which to compute EUI.'
-    floor_area = floor_area * conversion_factor_to_meters(model.units) ** 2
     mults = {rm.identifier.upper(): rm.multiplier for rm in model.rooms}
     mults = None if all(mul == 1 for mul in mults.values()) else mults
 
@@ -220,22 +183,28 @@ def load_sql_data(sql_path, model):
     bal_obj = LoadBalance.from_sql_file(model, sql_path)
     balance = bal_obj.load_balance_terms(True, True)
 
-    # add all of the data to the session state
-    st.session_state.sql_results = {
+    # return a dictionary containing all relevant results of the simulation
+    return {
+        'floor_areas': floor_areas,
         'load_terms': load_terms,
         'load_colors': load_colors,
         'balance': balance
     }
 
 
-def run_simulation():
-    """Build the IDF file from the Model and run it through EnergyPlus."""
-    # gather all of the inputs and ensure there is a model
-    target_folder = st.session_state.target_folder
-    hb_model = st.session_state.hb_model
-    epw_path = st.session_state.epw_path
-    ddy_path = st.session_state.ddy_path
-    north = st.session_state.north
+def run_simulation(target_folder, user_id, hb_model, epw_path, ddy_path, north):
+    """Build the IDF file from a Model and run it through EnergyPlus.
+
+    Args:
+        target_folder: Text for the target folder out of which the simulation will run.
+        user_id: A unique user ID for the session, which will be used to ensure
+            other simulations do not overwrite this one.
+        hb_model: A Honeybee Model object to be simulated.
+        epw_path: Path to an EPW file to be used in the simulation.
+        ddy_path: Path to a DDY file to be used in the simulation.
+        north: Integer for the angle from the Y-axis where North is.
+    """
+    # check to be sure there is a model
     if not hb_model or not epw_path or not ddy_path:
         return
 
@@ -270,7 +239,7 @@ def run_simulation():
         idf_str = '\n\n'.join([ver_str, sim_par_str, model_str])
 
         # write the final string into an IDF
-        directory = os.path.join(target_folder, 'data', st.session_state.user_id)
+        directory = os.path.join(target_folder, 'data', user_id)
         idf = os.path.join(directory, 'in.idf')
         write_to_file_by_name(directory, 'in.idf', idf_str, True)
 
@@ -282,10 +251,10 @@ def run_simulation():
             for error in err_obj.fatal_errors:
                 raise Exception(error)
         if sql is not None and os.path.isfile(sql):
-            load_sql_data(sql, hb_model)
+            st.session_state.sql_results = load_sql_data(sql, hb_model)
 
 
-def create_charts(container, sql_results, heat_cop, cool_cop, ip_units):
+def create_charts(container, sql_results, heat_cop, cool_cop, ip_units, normalize):
     """Create the load charts from the loaded sql results of the simulation.
 
     Args:
@@ -294,19 +263,34 @@ def create_charts(container, sql_results, heat_cop, cool_cop, ip_units):
         heat_cop: Number for the heating COP.
         cool_cop: Number for the cooling COP.
         ip_units: Boolean to indicate whether IP units should be used.
+        normalize: Boolean to indicate whether data should be normalized by
+            the Model floor area.
     """
     # get the session variables for the results
     if not sql_results:
         return
     load_terms = sql_results['load_terms'].copy()
     load_colors = sql_results['load_colors']
-    balance = sql_results['balance']
+    balance = sql_results['balance'].copy()
+    floor_areas = sql_results['floor_areas']
 
-    # convert the data to the correct units
+    # convert the data to the correct units system
     display_units = 'kBtu/ft2' if ip_units else 'kWh/m2'
     if load_terms[0].header.unit != display_units:
         for data in load_terms:
             data.convert_to_unit(display_units)
+    if balance[0].header.unit != display_units:
+        for data in balance:
+            data.convert_to_unit(display_units)
+
+    # total the data over the floor area if normalize is false
+    if not normalize:
+        if ip_units:
+            display_units, a_unit, total_area = 'kBtu', 'ft2', sum(floor_areas) * 10.7639
+        else:
+            display_units, a_unit, total_area = 'kWh', 'm2', sum(floor_areas)
+        load_terms = [data.aggregate_by_area(total_area, a_unit) for data in load_terms]
+        balance = [data.aggregate_by_area(total_area, a_unit) for data in balance]
 
     # multiply the results by the COP if it is not equal to 1
     if cool_cop != 1:
@@ -327,9 +311,6 @@ def create_charts(container, sql_results, heat_cop, cool_cop, ip_units):
     container.plotly_chart(figure)
 
     # create a monthly chart with the load balance
-    if balance[0].header.unit != display_units:
-        for data in balance:
-            data.convert_to_unit(display_units)
     bal_colors = Colorset()[19]
     leg_par = LegendParameters(colors=bal_colors)
     leg_par.decimal_count = 0
@@ -339,6 +320,7 @@ def create_charts(container, sql_results, heat_cop, cool_cop, ip_units):
 
 
 def main(platform):
+    """Perform the main calculation of the App."""
     # title
     st.header('Annual Loads')
 
@@ -348,13 +330,17 @@ def main(platform):
     container = st.container()
 
     # preview the model and/or run the simulation
-    run_simulation()
+    run_simulation(
+        st.session_state.target_folder, st.session_state.user_id,
+        st.session_state.hb_model,
+        st.session_state.epw_path, st.session_state.ddy_path, st.session_state.north
+    )
 
     # create the resulting charts
     create_charts(
         container, st.session_state.sql_results,
         st.session_state.heat_cop, st.session_state.cool_cop,
-        st.session_state.ip_units
+        st.session_state.ip_units, st.session_state.normalize
     )
 
 
