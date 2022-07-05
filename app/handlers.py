@@ -96,7 +96,7 @@ def get_model_cad():
     # load the model object from the file data
     hbjson_data = get_hbjson('hbjson_data')
     if hbjson_data:
-        if hbjson_data.has_key('hbjson'):
+        if 'hbjson' in hbjson_data:
             hbjson_data = hbjson_data['hbjson']
         st.session_state.vtk_path = None
         st.session_state.sql_results = None
