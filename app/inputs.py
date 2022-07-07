@@ -1,4 +1,4 @@
-"""Init all session state variables"""
+"""Functions for initializing inputs and formatting them for simulation"""
 import os
 import json
 import uuid
@@ -102,14 +102,25 @@ def get_model_web():
     )
 
 
+def new_model_cad():
+    """Process a newly-uploaded Honeybee Model file."""
+    # reset the simulation results and get the file data
+    st.session_state.vtk_path = None
+    st.session_state.valid_report = None
+    st.session_state.sql_results = None
+    # load the model object from the file data
+    if 'hbjson' in st.session_state['hbjson_data']:
+        hbjson_data = st.session_state['hbjson_data']['hbjson']
+        st.session_state.hb_model = Model.from_dict(hbjson_data)
+
+
 def get_model_cad():
     """Get the Model input from the App input."""
     # load the model object from the file data
-    hbjson_data = get_hbjson('hbjson_data')
-    if hbjson_data:
-        if 'hbjson' in hbjson_data:
-            hbjson_data = hbjson_data['hbjson']
-        st.session_state.hb_model = Model.from_dict(hbjson_data)
+    hbjson_data = get_hbjson(key='hbjson_data', on_change=new_model_cad)
+    if st.session_state.hb_model is None and hbjson_data is not None \
+            and 'hbjson' in hbjson_data:
+        st.session_state.hb_model = Model.from_dict(hbjson_data['hbjson'])
 
 
 def generate_vtk_model(hb_model: Model):
