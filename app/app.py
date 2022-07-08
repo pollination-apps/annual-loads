@@ -24,11 +24,14 @@ def main(platform):
     """Perform the main calculation of the App."""
     # title
     st.header('Annual Loads')
+    st.markdown("""---""")  # horizontal divider line between title and input
 
     # initialize the app and load up all of the inputs
     initialize()
-    get_inputs(platform)
-    container = st.container()  # container to eventually hold the results
+    in_container = st.container()  # container to hold the inputs
+    get_inputs(platform, in_container)
+    st.markdown("""---""")  # horizontal divider line between input and output
+    out_container = st.container()  # container to eventually hold the results
 
     # preview the model and/or run the simulation
     run_simulation(
@@ -39,7 +42,7 @@ def main(platform):
 
     # create the resulting charts
     display_results(
-        container, st.session_state.sql_results,
+        out_container, st.session_state.sql_results,
         st.session_state.heat_cop, st.session_state.cool_cop,
         st.session_state.ip_units, st.session_state.normalize
     )
