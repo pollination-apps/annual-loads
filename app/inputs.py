@@ -1,6 +1,5 @@
 """Functions for initializing inputs and formatting them for simulation"""
 import os
-import json
 import uuid
 from pathlib import Path
 
@@ -68,41 +67,22 @@ def new_weather_file():
         # set the session state variables
         st.session_state.epw_path = epw_path
         st.session_state.ddy_path = ddy_path
+    else:
+        st.session_state.epw_path = None
+        st.session_state.ddy_path = None
 
 
-def get_weather_file():
+def get_weather_file(column):
     """Get the EPW weather file from the App input."""
     # upload weather file
-    st.file_uploader(
-        'Upload a weather file (EPW)', type=['epw'],
-        on_change=new_weather_file, key='epw_data'
+    column.file_uploader(
+        'Weather file (EPW)', type=['epw'],
+        on_change=new_weather_file, key='epw_data',
+        help='Select an EPW weather file to be used in the simulation.'
     )
 
 
-def new_model_web():
-    """Process a newly-uploaded Honeybee Model file."""
-    # reset the simulation results and get the file data
-    st.session_state.vtk_path = None
-    st.session_state.valid_report = None
-    st.session_state.sql_results = None
-    # load the model object from the file data
-    hbjson_file = st.session_state.hbjson_data
-    if hbjson_file:
-        data = hbjson_file.read()
-        model_data = json.loads(data)
-        hb_model = Model.from_dict(model_data)
-        st.session_state.hb_model = hb_model
-
-
-def get_model_web():
-    """Get the Model input from the App input."""
-    st.file_uploader(
-        'Upload a hbjson file', type=['hbjson', 'json'],
-        on_change=new_model_web, key='hbjson_data'
-    )
-
-
-def new_model_cad():
+def new_model():
     """Process a newly-uploaded Honeybee Model file."""
     # reset the simulation results and get the file data
     st.session_state.vtk_path = None
@@ -114,16 +94,17 @@ def new_model_cad():
         st.session_state.hb_model = Model.from_dict(hbjson_data)
 
 
-def get_model_cad():
+def get_model(column):
     """Get the Model input from the App input."""
     # load the model object from the file data
-    hbjson_data = get_hbjson(key='hbjson_data', on_change=new_model_cad)
+    with column:
+        hbjson_data = get_hbjson(key='hbjson_data', on_change=new_model)
     if st.session_state.hb_model is None and hbjson_data is not None \
             and 'hbjson' in hbjson_data:
         st.session_state.hb_model = Model.from_dict(hbjson_data['hbjson'])
 
 
-def generate_vtk_model(hb_model: Model):
+def generate_vtk_model(hb_model: Model, container):
     """Generate a VTK preview of an input model."""
     if not st.session_state.vtk_path:
         directory = os.path.join(
@@ -137,49 +118,47 @@ def generate_vtk_model(hb_model: Model):
         vtk_path = vtk_model.to_vtkjs(folder=directory, name=hb_model.identifier)
         st.session_state.vtk_path = vtk_path
     vtk_path = st.session_state.vtk_path
-    viewer(content=Path(vtk_path).read_bytes(), key='vtk_preview_model')
+    with container:
+        viewer(content=Path(vtk_path).read_bytes(), key='vtk_preview_model')
 
 
-def generate_model_validation(hb_model: Model):
+def generate_model_validation(hb_model: Model, container):
     """Generate a Model validation report from an input model."""
     if not st.session_state.valid_report:
         report = hb_model.check_all(raise_exception=False, detailed=False)
         st.session_state.valid_report = report
     report = st.session_state.valid_report
     if report == '':
-        st.success('Congratulations! Your Model is valid!')
+        container.success('Congratulations! Your Model is valid!')
     else:
-        st.warning('Your Model is invalid for the following reasons:')
-        st.code(report, language='console')
+        container.warning('Your Model is invalid for the following reasons:')
+        container.code(report, language='console')
 
 
-def get_inputs(host: str):
+def get_inputs(host: str, container):
     """Get all of the inputs for the simulation."""
     # get the input model
-    if host is None or host.lower() == 'web':
-        get_model_web()
-    else:
-        get_model_cad()
-
+    m_col_1, m_col_2 = container.columns([2, 1])
+    get_model(m_col_1)
     # add options to preview the model in 3D and validate it
     if st.session_state.hb_model:
-        m_col_1, m_col_2 = st.columns(2)
-        if m_col_1.checkbox(label='Preview Model', value=False):
-            generate_vtk_model(st.session_state.hb_model)
+        if m_col_2.checkbox(label='Preview Model', value=False):
+            generate_vtk_model(st.session_state.hb_model, container)
         if m_col_2.checkbox(label='Validate Model', value=False):
-            generate_model_validation(st.session_state.hb_model)
+            generate_model_validation(st.session_state.hb_model, container)
 
     # get the input EPW and DDY files
-    get_weather_file()
+    w_col_1, w_col_2 = container.columns([2, 1])
+    get_weather_file(w_col_1)
 
     # set up inputs for north
-    in_north = st.slider(label='North', min_value=0, max_value=360, value=0)
+    in_north = w_col_2.slider(label='North', min_value=0, max_value=360, value=0)
     if in_north != st.session_state.north:
         st.session_state.north = in_north
         st.session_state.sql_results = None  # reset to have results recomputed
 
     # get the inputs that only affect the display and do not require re-simulation
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = container.columns(3)
     in_heat_cop = col1.number_input(
         label='Heating COP', min_value=0.0, max_value=6.0, value=1.0, step=0.05)
     if in_heat_cop != st.session_state.heat_cop:
