@@ -1,7 +1,7 @@
 streamlit_vtkjs>=0.2.0
 honeybee-vtk>=0.37.3
 pollination-streamlit>=0.5.0
-pollination-streamlit-io==0.36.6
+pollination-streamlit-io==0.36.7
 pollination-streamlit-viewer>=0.4.5
 ladybug-charts>=1.18.5
 honeybee-energy==1.91.35
